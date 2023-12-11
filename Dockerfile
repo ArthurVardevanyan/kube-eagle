@@ -1,5 +1,5 @@
 # build image
-FROM docker.io/golang:1.21.4-alpine3.18 as builder
+FROM docker.io/golang:1.21.5-alpine3.18 as builder
 RUN apk update && apk add git ca-certificates
 
 WORKDIR /app
