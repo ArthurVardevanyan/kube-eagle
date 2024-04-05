@@ -1,5 +1,5 @@
 # build image
-FROM registry.arthurvardevanyan.com/homelab/toolbox:latest as	builder
+FROM docker.io/golang:1.22.2 as builder
 
 WORKDIR /app
 COPY . .
