@@ -2,11 +2,12 @@ package main
 
 import (
 	"fmt"
-	"github.com/google-cloud-tools/kube-eagle/collector"
-	"github.com/prometheus/client_golang/prometheus"
 	"net/http"
 	"os"
 	"strconv"
+
+	"github.com/google-cloud-tools/kube-eagle/collector"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/google-cloud-tools/kube-eagle/options"
 	"github.com/kelseyhightower/envconfig"
@@ -45,7 +46,7 @@ func main() {
 	log.SetLevel(level)
 
 	// Start kube eagle exporter
-	log.Infof("Starting kube eagle v%v", opts.Version)
+	// log.Infof("Starting kube eagle v%v", opts.Version)
 	collector, err := collector.NewKubeEagleCollector(opts)
 	if err != nil {
 		log.Fatalf("could not start kube eagle collector: '%v'", err)

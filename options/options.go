@@ -3,7 +3,7 @@ package options
 // Options are configuration options that can be set by Environment Variables
 type Options struct {
 	// General
-	Version string `envconfig:"VERSION" required:"true"`
+	// Version string `envconfig:"VERSION" required:"true"`
 
 	// Kubernetes
 	// IsInCluster - Whether to use in cluster communication (if deployed inside of Kubernetes) or to look for a kubeconfig in home directory
