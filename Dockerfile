@@ -1,5 +1,5 @@
 # build image
-FROM docker.io/golang:1.23.2 as builder
+FROM docker.io/golang:1.23.3 as builder
 
 WORKDIR /app
 COPY . .
