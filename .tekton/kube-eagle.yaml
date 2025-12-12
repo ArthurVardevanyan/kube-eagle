@@ -5,7 +5,7 @@ metadata:
   name: kube-eagle
   annotations:
     io.kubernetes.cri-o.TrySkipVolumeSELinuxLabel: "true"
-    pipelinesascode.tekton.dev/on-event: "[pull_request]"
+    pipelinesascode.tekton.dev/on-event: "[pull_request, push]"
     pipelinesascode.tekton.dev/on-target-branch: "[main]"
     pipelinesascode.tekton.dev/max-keep-runs: "1"
     pipelinesascode.tekton.dev/target-namespace: "homelab"
@@ -17,12 +17,20 @@ spec:
       value: "{{ repo_url }}"
     - name: git-commit
       value: "{{ revision }}"
+    - name: pull-request-number
+      value: "{{ pull_request_number }}"
+    - name: event
+      value: "{{ event_type }}"
   pipelineSpec:
     params:
       - name: git-url
         description: Repository URL to clone from.
         type: string
       - name: git-commit
+        type: string
+      - name: pull-request-number
+        type: string
+      - name: event
         type: string
 
     results:
@@ -56,14 +64,34 @@ spec:
         workspaces:
           - name: output
             workspace: data
+          - name: basic-auth
+            workspace: git_auth_secret
         params:
           - name: revision
             value: $(params.git-commit)
+          - name: pull-request-number
+            value: $(params.pull-request-number)
+          - name: git-url
+            value: $(params.git-url)
+          - name: event
+            value: $(params.event)
         taskSpec:
+          params:
+            - name: revision
+              type: string
+            - name: pull-request-number
+              type: string
+              default: ""
+            - name: git-url
+              type: string
+            - name: event
+              type: string
           results:
             - name: IMAGE
           workspaces:
             - name: output
+              optional: false
+            - name: basic-auth
               optional: false
           stepTemplate:
             name: stepTemplate
@@ -94,8 +122,6 @@ spec:
             - name: test-build
               image: registry.arthurvardevanyan.com/homelab/toolbox:not_latest
               env:
-                - name: TAG
-                  value: $(params.revision)
                 - name: WORKSPACE_DATA_PATH
                   value: $(workspaces.output.path)
                 - name: WORKSPACE_RESULTS_PATH
@@ -115,10 +141,32 @@ spec:
                 cd ${WORKSPACE_DATA_PATH}
                 git config --global --add safe.directory "${WORKSPACE_DATA_PATH}"
 
-                if make ko-build-pipeline; then
-                  exit 0
+                gh auth login --hostname "github.com" --with-token <"$(workspaces.basic-auth.path)/git-provider-token"
+
+                export GIT_PR
+                export GIT_SHA
+                if [ "$(params.event)" = "push" ]; then
+                  echo "Get PR Number"
+                  GIT_PR=$(gh pr list --repo $(params.git-url) --search "$(params.revision)" --state merged --json url | jq --raw-output '.[] | .url' | rev | cut -d/ -f1 | rev)
+                  echo "Get PR SHA"
+                  GIT_SHA=$(gh pr view $GIT_PR --repo $(params.git-url) --json headRefOid --jq .headRefOid)
+
+                  export REPO=$(grep "export KO_DOCKER_REPO" Makefile | cut -d= -f2)
+                  export PR_TAG=$(skopeo list-tags docker://${REPO} | jq -r '.Tags[]' | grep -E ".*-pr-${GIT_PR}-${GIT_SHA}$" | sort -r | head -n 1)
+                  if [ -z "${PR_TAG}" ]; then
+                    echo "Failed to find PR tag for ${GIT_PR}-${GIT_SHA}"
+                    exit 1
+                  fi
+                  export NEW_TAG=$(date -u +"%Y.%m.%d.%H%M%S")-push-${GIT_PR} #-$(params.revision)
+
+                  echo "Promoting ${REPO}:${PR_TAG} to ${REPO}:${NEW_TAG}"
+                  skopeo copy docker://${REPO}:${PR_TAG} docker://${REPO}:${NEW_TAG} --multi-arch all --preserve-digests
+                  echo "${REPO}:${NEW_TAG}" > ${WORKSPACE_RESULTS_PATH}
                 else
-                  exit 1
+                  GIT_PR=$(params.pull-request-number)
+                  GIT_SHA=$(params.revision)
+                  export TAG="$(date -u +"%Y.%m.%d.%H%M%S")-pr-${GIT_PR}-${GIT_SHA}"
+                  make ko-build-pipeline
                 fi
 
       - name: clair-action
@@ -130,6 +178,7 @@ spec:
         params:
           - name: IMAGE
             value: $(tasks.test-build.results.IMAGE)
+
   taskRunTemplate:
     serviceAccountName: pipeline
     podTemplate:
